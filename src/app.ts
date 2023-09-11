@@ -4,6 +4,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
 import { connectDb, sql } from './database/dbConfig';
+import userRoutes from './routes/user.routes';
+import categoryRoutes from './routes/category.routes';
+import itemRoutes from './routes/item.routes';
 
 //HABILITAR DOTENV
 dotenv.config();
@@ -13,7 +16,7 @@ app.use(express.static('public'));
 // Middlewares
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: false }));
 
 async function serverInit() {
   try {
@@ -30,6 +33,10 @@ serverInit();
 
 dotenv.config();
 // Rutas
+
+app.use('/api/user', userRoutes);
+app.use('/api/category', categoryRoutes);
+app.use('/api/item', itemRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Hola mundo');

@@ -1,5 +1,5 @@
 // database/dbConfig.js
-import sql from 'mssql';
+import sql, { ConnectionPool } from 'mssql';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -20,12 +20,14 @@ const sqlConfig = {
   },
 };
 
-async function connectDb() {
+async function connectDb(): Promise<ConnectionPool> {
   try {
-    await sql.connect(sqlConfig);
+    const pool = await sql.connect(sqlConfig);
     console.log('Conexión exitosa a SQL Server');
+    return pool;
   } catch (error) {
     console.log(error);
+    throw new Error('No se pudo conectar a la base de datos');
   }
 }
 

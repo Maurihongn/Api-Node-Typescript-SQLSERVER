@@ -3,6 +3,7 @@ import { authToken } from '../middlewares/auth';
 import { itemUpload } from '../services/multerConfig';
 import {
   createItem,
+  getItemById,
   getItems,
   image,
   uploadImage,
@@ -27,6 +28,7 @@ router.put(
 router.get('/all', authToken, getItems);
 
 //OBTENER POR ID
+router.get('/:itemId', authToken, getItemById);
 
 //EDITAR ITEM
 

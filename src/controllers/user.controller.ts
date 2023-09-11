@@ -650,6 +650,7 @@ export const saveImage = async (req: Request, res: Response) => {
       });
     return res.status(200).json({ message: 'Imagen actualizada con éxito.' });
   } catch (error) {
+    fs.unlinkSync(req.file!.path);
     return res
       .status(500)
       .json({ message: 'Error al procesar la foto de perfil.' });

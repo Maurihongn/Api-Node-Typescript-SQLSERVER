@@ -2,13 +2,9 @@ import { Request, Response } from 'express';
 import { connectDb } from '../database/dbConfig';
 import sql, { pool } from 'mssql';
 import fs from 'fs';
-import bcrypt from 'bcrypt';
+import { checkAdminPermission } from '../services/authService';
 import sharp from 'sharp';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
-import { sendEmail } from '../config/mailer';
-import { generateToken } from '../services/generateTokens';
-import { checkAdminPermission } from '../services/authService';
 
 //CREAR UN ITEM
 export const createItem = async (req: Request, res: Response) => {
@@ -41,7 +37,7 @@ export const createItem = async (req: Request, res: Response) => {
     const createItemResult = await pool
       .request()
       .input('name', sql.NVarChar, name)
-      .input('price', sql.Float, price)
+      .input('price', sql.Decimal, price)
       .input('isActive', sql.Bit, isActive)
       .input('description', sql.NVarChar, description)
       .input('categoryId', sql.Int, categoryId)
@@ -53,46 +49,50 @@ export const createItem = async (req: Request, res: Response) => {
         .json({ message: 'Error al crear el item intente nuevamente' });
     }
 
+    if (!req.file) {
+      return res.status(200).json({
+        message: 'Item creado correctamente, agregale una foto',
+      });
+    }
+    console.log(createItemResult.recordset[0]);
     const insertedItemId = createItemResult.recordset[0].InsertedItemId;
 
-    if (req.file) {
-      const fileName = `item-${Date.now()}-${insertedItemId}.webp`;
-      const imagePath = `uploads/items/${fileName}`; // Ruta donde guardar la imagen
+    const fileName = `item-${Date.now()}-${insertedItemId}.webp`;
+    const imagePath = `uploads/items/${fileName}`; // Ruta donde guardar la imagen
 
-      // Utiliza Sharp para redimensionar y convertir la foto de perfil a WebP
-      sharp(req.file.path)
-        .resize({ width: 200 }) // Ajusta el tamaño a tus necesidades
-        .webp()
-        .toFile(imagePath, async (err) => {
-          if (err) {
-            return res
-              .status(500)
-              .json({ message: 'Error al procesar la foto del item.' });
-          }
+    // Utiliza Sharp para redimensionar y convertir la foto de perfil a WebP
+    sharp(req.file.path)
+      .resize({ width: 200 }) // Ajusta el tamaño a tus necesidades
+      .webp()
+      .toFile(imagePath, async (err) => {
+        if (err) {
+          return res
+            .status(500)
+            .json({ message: 'Error al procesar la foto del item.' });
+        }
 
-          // Elimina el archivo temporal de la carga
-          fs.unlinkSync(req.file!.path);
+        // Elimina el archivo temporal de la carga
+        fs.unlinkSync(req.file!.path);
 
-          //preparar el la ruta del endpoint de la imagen
+        //preparar el la ruta del endpoint de la imagen
 
-          const imageUrl = `${process.env.BASE_URL}/item/image/${fileName}`;
+        const imageUrl = `${process.env.BASE_URL}/item/image/${fileName}`;
 
-          const updateImageUrlQuery = `UPDATE Items SET ItemImage = @itemImage WHERE ItemID = @itemId`;
-          const updateImageUrlResult = await pool
-            .request()
-            .input('itemId', sql.Int, insertedItemId)
-            .input('itemImage', sql.NVarChar, imageUrl)
-            .query(updateImageUrlQuery);
+        const updateImageUrlQuery = `UPDATE Items SET ItemImage = @itemImage WHERE ItemID = @itemId`;
+        const updateImageUrlResult = await pool
+          .request()
+          .input('itemId', sql.Int, insertedItemId)
+          .input('itemImage', sql.NVarChar, imageUrl)
+          .query(updateImageUrlQuery);
 
-          if (updateImageUrlResult.rowsAffected[0] === 0) {
-            return res.status(400).json({
-              message: 'Error al actualizar el item intente nuevamente',
-            });
-          }
+        if (updateImageUrlResult.rowsAffected[0] === 0) {
+          return res.status(400).json({
+            message: 'Error al actualizar el item intente nuevamente',
+          });
+        }
 
-          // Si llegaste hasta aquí, la actualización y procesamiento de la foto fueron exitosos
-        });
-    }
+        // Si llegaste hasta aquí, la actualización y procesamiento de la foto fueron exitosos
+      });
 
     return res.status(200).json({ message: 'Item creado correctamente' });
   } catch (error) {
@@ -245,7 +245,7 @@ export const getItems = async (req: Request, res: Response) => {
     const offset = (pageNumber - 1) * limitNumber;
 
     //contruye la consulta sql para obtener los items
-    let getItemsQuery = `SELECT i.ItemID, i.Name, i.Price, i.Description, i.ItemImage, i.IsActive, i.CreationDate, c.Name FROM Items i INNER JOIN Categories c ON i.CategoryID ${
+    let getItemsQuery = `SELECT i.ItemID as itemId, i.Name as name, i.Price as price, i.Description as description, i.ItemImage as itemImage, i.IsActive as isActive, i.CreationDate as creationDate, i.CategoryID as categoryId, c.Name as categoryName FROM Items i INNER JOIN Categories c ON i.CategoryID = c.CategoryID ${
       typeof search === 'string' && search.trim() !== ''
         ? `WHERE c.Name LIKE @search`
         : ''
@@ -321,6 +321,43 @@ export const getItems = async (req: Request, res: Response) => {
 };
 
 //OBTENER POR ID
+export const getItemById = async (req: Request, res: Response) => {
+  const { userId } = req.body;
+  const { itemId } = req.params;
+
+  if (!userId) {
+    return res
+      .status(401)
+      .json({ message: 'No estas autorizado para hacer esta accion' });
+  }
+  if (!itemId) {
+    return res.status(400).json({ message: 'Faltan datos' });
+  }
+  try {
+    const pool = await connectDb();
+    if (!pool) {
+      return res
+        .status(500)
+        .json({ message: 'Error connecting to the database' });
+    }
+
+    const getItemByIdQuery = `SELECT ItemID as itemId, Name as name, Price as price, Description as description, ItemImage as itemImage, IsActive as isActive, CreationDate as creationDate, CategoryID as categoryId FROM Items WHERE ItemID = @itemId`;
+    const getItemByIdResult = await pool
+      .request()
+      .input('itemId', sql.Int, itemId)
+      .query(getItemByIdQuery);
+
+    if (getItemByIdResult.recordset.length === 0) {
+      return res.status(400).json({ message: 'No se encontro el item' });
+    }
+
+    const item = getItemByIdResult.recordset[0];
+
+    return res.status(200).json(item);
+  } catch (error) {
+    return res.status(500).json({ message: 'Error al obtener el item' });
+  }
+};
 
 //EDITAR ITEM
 

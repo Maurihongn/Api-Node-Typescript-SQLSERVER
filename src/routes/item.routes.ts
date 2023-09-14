@@ -3,6 +3,8 @@ import { authToken } from '../middlewares/auth';
 import { itemUpload } from '../services/multerConfig';
 import {
   createItem,
+  deleteItem,
+  editItem,
   getItemById,
   getItems,
   image,
@@ -31,7 +33,9 @@ router.get('/all', authToken, getItems);
 router.get('/:itemId', authToken, getItemById);
 
 //EDITAR ITEM
+router.put('/:itemId', itemUpload.single('image'), authToken, editItem);
 
 //ELIMINAR ITEM
+router.delete('/:itemId', authToken, deleteItem);
 
 export default router;

@@ -605,7 +605,9 @@ export const saveImage = async (req: Request, res: Response) => {
       //extrar el nombre del fichero
       const oldFileName = `uploads/avatars/${path.basename(oldImagePath)}`;
       //eliminarlo
-      fs.unlinkSync(oldFileName);
+      if (fs.existsSync(oldFileName)) {
+        fs.unlinkSync(oldFileName);
+      }
     }
 
     const fileName = `avatar-${Date.now()}-${
@@ -730,6 +732,16 @@ export const adminEditUser = async (req: Request, res: Response) => {
     isActive,
     roleId,
   } = req.body;
+
+  if (userId) {
+    res
+      .status(401)
+      .json({ message: 'No tienes permiso para realizar esta acción' });
+  }
+
+  if (userIdToUpdate) {
+    res.status(400).json({ message: 'NNo hay un usuario para editar' });
+  }
 
   try {
     const pool = await connectDb();

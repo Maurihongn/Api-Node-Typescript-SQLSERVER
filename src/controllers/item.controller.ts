@@ -166,7 +166,9 @@ export const uploadImage = async (req: Request, res: Response) => {
       //extrar el nombre del fichero
       const oldFileName = `uploads/items/${path.basename(oldImagePath)}`;
       //eliminarlo
-      fs.unlinkSync(oldFileName);
+      if (fs.existsSync(oldFileName)) {
+        fs.unlinkSync(oldFileName);
+      }
     }
 
     const fileName = `item-${Date.now()}-${
@@ -360,5 +362,197 @@ export const getItemById = async (req: Request, res: Response) => {
 };
 
 //EDITAR ITEM
+export const editItem = async (req: Request, res: Response) => {
+  const { userId, name, price, isActive, description, categoryId } = req.body;
+  const { itemId } = req.params;
+
+  if (!userId) {
+    return res
+      .status(401)
+      .json({ message: 'No estas autorizado para hacer esta accion' });
+  }
+  if (!itemId || !name || !price || !isActive || !description || !categoryId) {
+    return res.status(400).json({ message: 'Faltan datos' });
+  }
+
+  try {
+    //revisar si sos admin
+    const isAdmin = await checkAdminPermission(userId);
+
+    if (!isAdmin) {
+      return res.status(400).json({ message: 'No estas autorizado' });
+    }
+
+    const pool = await connectDb();
+    if (!pool) {
+      return res
+        .status(500)
+        .json({ message: 'Error connecting to the database' });
+    }
+
+    const editItemQuery = `UPDATE Items SET Name = @name, Price = @price, IsActive = @isActive, Description = @description, CategoryID = @categoryId WHERE ItemID = @itemId`;
+    const editItemResult = await pool
+      .request()
+      .input('itemId', sql.Int, itemId)
+      .input('name', sql.NVarChar, name)
+      .input('price', sql.Int, price)
+      .input('isActive', sql.Bit, isActive)
+      .input('description', sql.NVarChar, description)
+      .input('categoryId', sql.Int, categoryId)
+      .query(editItemQuery);
+
+    if (editItemResult.rowsAffected[0] === 0) {
+      return res
+        .status(400)
+        .json({ message: 'Error al editar el item intente nuevamente' });
+    }
+
+    if (req.file) {
+      const getItemImageQuery = `SELECT ItemImage FROM Items WHERE ItemID = @itemId`;
+      const getItemImageResult = await pool
+        .request()
+        .input('itemId', sql.Int, itemId)
+        .query(getItemImageQuery);
+
+      if (getItemImageResult.recordset.length === 0) {
+        return res
+          .status(400)
+          .json({ message: 'Error al obtener la imagen del item' });
+      }
+      // Ruta de la imagen anterior
+      const oldImagePath = getItemImageResult.recordset[0].ItemImage;
+
+      // Eliminar la imagen anterior si existe
+      if (oldImagePath) {
+        //extrar el nombre del fichero
+        const oldFileName = `uploads/items/${path.basename(oldImagePath)}`;
+        //eliminarlo
+
+        if (fs.existsSync(oldFileName)) {
+          fs.unlinkSync(oldFileName);
+        }
+      }
+
+      const fileName = `item-${Date.now()}-${itemId}.webp`;
+      const imagePath = `uploads/items/${fileName}`; // Ruta donde guardar la imagen
+
+      // Utiliza Sharp para redimensionar y convertir la foto de perfil a WebP
+      sharp(req.file.path)
+        .resize({ width: 200 }) // Ajusta el tamaño a tus necesidades
+        .webp()
+        .toFile(imagePath, async (err) => {
+          if (err) {
+            return res
+              .status(500)
+              .json({ message: 'Error al procesar la foto del Item.' });
+          }
+
+          // Elimina el archivo temporal de la carga
+          fs.unlinkSync(req.file!.path);
+
+          // Actualiza la foto de perfil del usuario
+
+          //preparar el la ruta del endpoint de la imagen
+
+          const imageUrl = `${process.env.BASE_URL}/item/image/${fileName}`;
+
+          const updateImageUrlQuery = `UPDATE Items SET ItemImage = @itemImage WHERE ItemID = @itemId`;
+          const updateImageUrlResult = await pool
+            .request()
+            .input('itemId', sql.Int, itemId)
+            .input('itemImage', sql.NVarChar, imageUrl)
+            .query(updateImageUrlQuery);
+
+          if (updateImageUrlResult.rowsAffected[0] === 0) {
+            return res.status(400).json({
+              message: 'Error al actualizar el item intente nuevamente',
+            });
+          }
+        });
+    }
+    return res.status(200).json({
+      message: 'Item editado correctamente',
+    });
+  } catch (error) {
+    console.log(error);
+    return res
+      .status(500)
+      .json({ message: 'Error al editar el item, intente editar nuevamente' });
+  }
+};
 
 //ELIMINAR ITEM
+export const deleteItem = async (req: Request, res: Response) => {
+  const { userId } = req.body;
+  const { itemId } = req.params;
+
+  if (!userId) {
+    return res
+      .status(401)
+      .json({ message: 'No estas autorizado para hacer esta accion' });
+  }
+  if (!itemId) {
+    return res.status(400).json({ message: 'Faltan datos' });
+  }
+
+  try {
+    //revisar si sos admin
+    const isAdmin = await checkAdminPermission(userId);
+
+    if (!isAdmin) {
+      return res.status(400).json({ message: 'No estas autorizado' });
+    }
+
+    const pool = await connectDb();
+    if (!pool) {
+      return res
+        .status(500)
+        .json({ message: 'Error connecting to the database' });
+    }
+
+    //traer el item y su imagen asi borrarla del almacenamiento del servidor
+    const getItemImageQuery = `SELECT ItemImage FROM Items WHERE ItemID = @itemId`;
+    const getItemImageResult = await pool
+      .request()
+      .input('itemId', sql.Int, itemId)
+      .query(getItemImageQuery);
+
+    if (getItemImageResult.recordset.length === 0) {
+      return res
+        .status(400)
+        .json({ message: 'Error al obtener la imagen del item' });
+    }
+
+    // Ruta de la imagen anterior
+    const oldImagePath = getItemImageResult.recordset[0].ItemImage;
+
+    // Eliminar la imagen anterior si existe
+    if (oldImagePath) {
+      //extrar el nombre del fichero
+      const oldFileName = `uploads/items/${path.basename(oldImagePath)}`;
+      //eliminarlo
+
+      if (fs.existsSync(oldFileName)) {
+        fs.unlinkSync(oldFileName);
+      }
+    }
+
+    const deleteItemQuery = `DELETE FROM Items WHERE ItemID = @itemId`;
+    const deleteItemResult = await pool
+      .request()
+      .input('itemId', sql.Int, itemId)
+      .query(deleteItemQuery);
+
+    if (deleteItemResult.rowsAffected[0] === 0) {
+      return res
+        .status(400)
+        .json({ message: 'Error al eliminar el item intente nuevamente' });
+    }
+    return res.status(200).json({ message: 'Item eliminado correctamente' });
+  } catch {
+    fs.unlinkSync(req.file!.path);
+    return res
+      .status(500)
+      .json({ message: 'Error al eliminar el item, intente nuevamente' });
+  }
+};

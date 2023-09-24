@@ -37,6 +37,7 @@ dotenv.config();
 app.use('/api/user', userRoutes);
 app.use('/api/category', categoryRoutes);
 app.use('/api/item', itemRoutes);
+// app.use('/api/item', itemRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Hola mundo');

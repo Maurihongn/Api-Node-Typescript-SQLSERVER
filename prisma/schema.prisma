@@ -1,0 +1,113 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ActivationCode {
+  CodeID  Int       @id @default(autoincrement())
+  UserID  Int
+  Code    String
+  IsUsed  Boolean?
+  User    User      @relation(fields: [UserID], references: [UserID])
+}
+
+model Category {
+  CategoryID   Int       @id @default(autoincrement())
+  Name         String
+  Description  String?
+  CreationDate DateTime?
+  IsActive     Boolean?
+  Items        Item[]
+}
+
+model Item {
+  ItemID       Int       @id @default(autoincrement())
+  Name         String
+  Price        Float
+  IsActive     Boolean
+  Description  String?
+  CreationDate DateTime?
+  CategoryID   Int
+  Category     Category  @relation(fields: [CategoryID], references: [CategoryID])
+  ItemImage    String?
+  OrderItems   OrderItem[]
+}
+
+model Order {
+  OrderID         Int           @id @default(autoincrement())
+  TableNumber     Int
+  OrderStatusID   Int?
+  NumberOfPeople  Int?
+  CreationDate    DateTime?
+  UserID          Int?
+  OrderStatus     OrderStatus?  @relation(fields: [OrderStatusID], references: [OrderStatusID])
+  User            User?         @relation(fields: [UserID], references: [UserID])
+  OrderItems      OrderItem[]
+  TotalPrice      Float?        // Precio total de la orden
+}
+
+model OrderItem {
+  OrderItemID     Int       @id @default(autoincrement())
+  OrderID         Int
+  ItemID          Int
+  Quantity        Int
+  UnitPrice       Float      // Precio unitario del item en esta orden
+  TotalPrice      Float      // Precio total del item en esta orden
+  Order           Order     @relation(fields: [OrderID], references: [OrderID])
+  Item            Item      @relation(fields: [ItemID], references: [ItemID])
+}
+
+model OrderStatus {
+  OrderStatusID  Int       @id @default(autoincrement())
+  StatusName     String
+  Orders         Order[]
+}
+
+model Reservation {
+  ReservationID       Int               @id @default(autoincrement())
+  ReservationDate     DateTime?
+  ReservationStatusID Int?
+  UserID              Int?
+  ReservationStatus   ReservationStatus? @relation(fields: [ReservationStatusID], references: [ReservationStatusID])
+  User                User?              @relation(fields: [UserID], references: [UserID])
+}
+
+model ReservationStatus {
+  ReservationStatusID Int       @id @default(autoincrement())
+  StatusName          String
+  Reservations        Reservation[]
+}
+
+model Role {
+  RoleID    Int       @id @default(autoincrement())
+  RoleName  String
+  RoleValue String
+  Users     User[]
+}
+
+model User {
+  UserID      Int            @id @default(autoincrement())
+  Email       String         @unique
+  Password    String
+  ProfileImage String?
+  FirstName   String
+  LastName    String
+  Address     String?
+  Phone       String?
+  BirthDate   DateTime?
+  HireDate    DateTime?
+  RoleID      Int?
+  Salary      Float?
+  IsActive    Boolean?
+  ActivationCodes ActivationCode[]
+  Orders      Order[]
+  Reservations Reservation[]
+  Role        Role?          @relation(fields: [RoleID], references: [RoleID])
+}

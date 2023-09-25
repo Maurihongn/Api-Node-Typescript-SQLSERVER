@@ -1,15 +1,13 @@
-import { Request, Response } from 'express';
-import { connectDb } from '../database/dbConfig';
-import sql from 'mssql';
-import fs from 'fs';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
-import sharp from 'sharp';
+import { Request, Response } from 'express';
+import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { sendEmail } from '../config/mailer';
-import { generateToken } from '../services/generateTokens';
-import { PrismaClient } from '@prisma/client';
 import { checkAdminPermission } from '../services/authService';
+import { generateToken } from '../services/generateTokens';
 
 const prisma = new PrismaClient();
 
@@ -36,9 +34,14 @@ export const createUser = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Empty fields' });
     }
 
+    const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
+    if (!email || !emailRegex.test(email)) {
+      return res.status(400).json({ message: 'El mail no es valido' });
+    }
+
     // Buscar si existe un usuario ya con ese email
     const existingUser = await prisma.user.findUnique({
-      where: { Email: email },
+      where: { email: email },
     });
 
     if (existingUser) {
@@ -51,24 +54,24 @@ export const createUser = async (req: Request, res: Response) => {
     // Insertar el nuevo usuario en la tabla Users
     const newUser = await prisma.user.create({
       data: {
-        Email: email,
-        Password: hashedPassword,
-        FirstName: name,
-        LastName: lastname,
-        Role: {
-          connect: { RoleID: 2 }, // Conectar al rol "CLIENT"
+        email: email,
+        password: hashedPassword,
+        firstName: name,
+        lastName: lastname,
+        role: {
+          connect: { roleId: 2 }, // Conectar al rol "CLIENT"
         },
-        IsActive: false,
+        isActive: false,
       },
     });
 
     // Insertar el código de activación en la tabla ActivationCodes
     await prisma.activationCode.create({
       data: {
-        Code: activationCode,
-        IsUsed: false,
-        User: {
-          connect: { UserID: newUser.UserID }, // Conectar al usuario recién creado
+        code: activationCode,
+        isUsed: false,
+        user: {
+          connect: { userId: newUser.userId }, // Conectar al usuario recién creado
         },
       },
     });
@@ -105,7 +108,7 @@ export const activateUser = async (req: Request, res: Response) => {
     // Buscar si hay una activación con este código
     const activation = await prisma.activationCode.findFirst({
       where: {
-        Code: activationCode,
+        code: activationCode,
       },
     });
 
@@ -118,10 +121,10 @@ export const activateUser = async (req: Request, res: Response) => {
     // Si hay una activación con este código, actualizar el estado del usuario
     const updateUser = await prisma.user.update({
       where: {
-        UserID: activation.UserID,
+        userId: activation.userId,
       },
       data: {
-        IsActive: true,
+        isActive: true,
       },
     });
 
@@ -134,10 +137,10 @@ export const activateUser = async (req: Request, res: Response) => {
     // Cambiar el estado de la activación
     const updateActivationCode = await prisma.activationCode.update({
       where: {
-        CodeID: activation.CodeID,
+        codeId: activation.codeId,
       },
       data: {
-        IsUsed: true,
+        isUsed: true,
       },
     });
 
@@ -172,21 +175,21 @@ export const loginUser = async (req: Request, res: Response) => {
 
     // Encontrar el usuario en la base de datos utilizando Prisma
     const user = await prisma.user.findUnique({
-      where: { Email: email },
-      select: { UserID: true, IsActive: true, Password: true },
+      where: { email: email },
+      select: { userId: true, isActive: true, password: true },
     });
 
     if (!user) {
       return res.status(400).json({ message: 'Usuario no encontrado' });
     }
 
-    if (user.IsActive === false) {
+    if (user.isActive === false) {
       return res.status(400).json({
         message: 'El usuario no está activado, revisa tu casilla de email',
       });
     }
 
-    const userPassword = user.Password;
+    const userPassword = user.password;
 
     const passwordMatch = await bcrypt.compare(password, userPassword);
 
@@ -196,7 +199,7 @@ export const loginUser = async (req: Request, res: Response) => {
         .json({ status: 'error', message: 'Email o contraseña incorrectos' });
     }
 
-    const userId = user.UserID;
+    const userId = user.userId;
 
     const Token = generateToken(userId);
 
@@ -228,8 +231,8 @@ export const changePassword = async (req: Request, res: Response) => {
   try {
     // Buscar al usuario por ID y traer su contraseña actual utilizando Prisma
     const user = await prisma.user.findUnique({
-      where: { UserID: userId },
-      select: { UserID: true, Password: true },
+      where: { userId: userId },
+      select: { userId: true, password: true },
     });
 
     if (!user) {
@@ -237,7 +240,7 @@ export const changePassword = async (req: Request, res: Response) => {
     }
 
     // Comprobar si la contraseña antigua coincide
-    const passwordMatch = await bcrypt.compare(oldPassword, user.Password);
+    const passwordMatch = await bcrypt.compare(oldPassword, user.password);
 
     if (!passwordMatch) {
       return res
@@ -250,8 +253,8 @@ export const changePassword = async (req: Request, res: Response) => {
 
     // Actualizar la contraseña del usuario utilizando Prisma
     await prisma.user.update({
-      where: { UserID: userId },
-      data: { Password: hashedPassword },
+      where: { userId: userId },
+      data: { password: hashedPassword },
     });
 
     return res
@@ -276,8 +279,8 @@ export const requestChangePassword = async (req: Request, res: Response) => {
   try {
     // Buscar al usuario por email utilizando Prisma
     const user = await prisma.user.findUnique({
-      where: { Email: email },
-      select: { UserID: true, Email: true },
+      where: { email: email },
+      select: { userId: true, email: true },
     });
 
     if (!user) {
@@ -286,7 +289,7 @@ export const requestChangePassword = async (req: Request, res: Response) => {
 
     // Eliminar códigos de activación anteriores del mismo usuario utilizando Prisma
     await prisma.activationCode.deleteMany({
-      where: { UserID: user.UserID },
+      where: { userId: user.userId },
     });
 
     // Generar código de cambio de contraseña
@@ -295,9 +298,9 @@ export const requestChangePassword = async (req: Request, res: Response) => {
     // Insertar el código de activación en la tabla ActivationCodes utilizando Prisma
     await prisma.activationCode.create({
       data: {
-        Code: activationToken,
-        IsUsed: false,
-        User: { connect: { UserID: user.UserID } },
+        code: activationToken,
+        isUsed: false,
+        user: { connect: { userId: user.userId } },
       },
     });
 
@@ -330,8 +333,8 @@ export const saveNewPassword = async (req: Request, res: Response) => {
   try {
     // Buscar el código de activación utilizando Prisma
     const activationCode = await prisma.activationCode.findFirst({
-      where: { Code: activationToken },
-      select: { UserID: true },
+      where: { code: activationToken },
+      select: { userId: true },
     });
 
     if (!activationCode) {
@@ -340,18 +343,18 @@ export const saveNewPassword = async (req: Request, res: Response) => {
         .json({ message: 'CÓDIGO DE ACTIVACIÓN INCORRECTO' });
     }
 
-    const userId = activationCode.UserID;
+    const userId = activationCode.userId;
 
     // Cambiar la contraseña del usuario por la nueva utilizando Prisma
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
-      where: { UserID: userId },
-      data: { Password: hashedPassword },
+      where: { userId: userId },
+      data: { password: hashedPassword },
     });
 
     // Eliminar el código de activación utilizando Prisma
     await prisma.activationCode.deleteMany({
-      where: { UserID: userId },
+      where: { userId: userId },
     });
 
     return res
@@ -375,9 +378,9 @@ export const getUserRole = async (req: Request, res: Response) => {
   try {
     // Buscar el rol del usuario utilizando Prisma
     const user = await prisma.user.findUnique({
-      where: { UserID: userId },
+      where: { userId: userId },
       select: {
-        Role: { select: { RoleID: true, RoleName: true, RoleValue: true } },
+        role: { select: { roleId: true, roleName: true, roleValue: true } },
       },
     });
 
@@ -385,18 +388,18 @@ export const getUserRole = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Usuario no encontrado' });
     }
 
-    if (!user.Role) {
+    if (!user.role) {
       return res
         .status(400)
         .json({ message: 'El usuario no tiene un rol asignado' });
     }
 
-    const userRole = user.Role;
+    const userRole = user.role;
 
     return res.status(200).json({
-      roleId: userRole.RoleID,
-      roleName: userRole.RoleName,
-      roleValue: userRole.RoleValue,
+      roleId: userRole.roleId,
+      roleName: userRole.roleName,
+      roleValue: userRole.roleValue,
     });
   } catch (error) {
     console.log(error);
@@ -415,7 +418,7 @@ export const editUser = async (req: Request, res: Response) => {
 
     // Buscar el usuario por su ID
     const user = await prisma.user.findUnique({
-      where: { UserID: userId },
+      where: { userId: userId },
     });
 
     // Verificar si el usuario existe
@@ -425,36 +428,36 @@ export const editUser = async (req: Request, res: Response) => {
 
     // Actualizar los campos si han cambiado
     const updateData: {
-      FirstName?: string;
-      LastName?: string;
-      Address?: string;
-      Phone?: string;
-      BirthDate?: Date;
-      HireDate?: Date;
+      firstName?: string;
+      lastName?: string;
+      address?: string;
+      phone?: string;
+      birthDate?: Date;
+      hireDate?: Date;
     } = {};
-    if (name && name !== user.FirstName) {
-      updateData.FirstName = name;
+    if (name && name !== user.firstName) {
+      updateData.firstName = name;
     }
-    if (lastname && lastname !== user.LastName) {
-      updateData.LastName = lastname;
+    if (lastname && lastname !== user.lastName) {
+      updateData.lastName = lastname;
     }
-    if (address && address !== user.Address) {
-      updateData.Address = address;
+    if (address && address !== user.address) {
+      updateData.address = address;
     }
-    if (phone && phone !== user.Phone) {
-      updateData.Phone = phone;
+    if (phone && phone !== user.phone) {
+      updateData.phone = phone;
     }
-    if (birthDate && birthDate !== user.BirthDate) {
-      updateData.BirthDate = new Date(birthDate);
+    if (birthDate && birthDate !== user.birthDate) {
+      updateData.birthDate = new Date(birthDate);
     }
-    if (hireDate && hireDate !== user.HireDate) {
-      updateData.HireDate = new Date(hireDate);
+    if (hireDate && hireDate !== user.hireDate) {
+      updateData.hireDate = new Date(hireDate);
     }
 
     // Actualizar los datos del usuario si hay cambios
     if (Object.keys(updateData).length > 0) {
       await prisma.user.update({
-        where: { UserID: userId },
+        where: { userId: userId },
         data: updateData,
       });
     }
@@ -482,8 +485,8 @@ export const saveImage = async (req: Request, res: Response) => {
   try {
     // Obtener el usuario por ID usando Prisma
     const user = await prisma.user.findUnique({
-      where: { UserID: userId },
-      select: { ProfileImage: true }, // Selecciona la propiedad ProfileImage
+      where: { userId: userId },
+      select: { profileImage: true }, // Selecciona la propiedad ProfileImage
     });
 
     if (!user) {
@@ -491,7 +494,7 @@ export const saveImage = async (req: Request, res: Response) => {
     }
 
     // Ruta de la imagen anterior
-    const oldImagePath = user.ProfileImage;
+    const oldImagePath = user.profileImage;
 
     // Eliminar la imagen anterior si existe
     if (oldImagePath) {
@@ -527,8 +530,8 @@ export const saveImage = async (req: Request, res: Response) => {
 
         // Actualiza la propiedad ProfileImage del usuario usando Prisma
         const updatedUser = await prisma.user.update({
-          where: { UserID: userId },
-          data: { ProfileImage: imageUrl },
+          where: { userId: userId },
+          data: { profileImage: imageUrl },
         });
 
         if (!updatedUser) {
@@ -580,19 +583,20 @@ export const getUserData = async (req: Request, res: Response) => {
   try {
     // Buscar al usuario por ID utilizando Prisma
     const user = await prisma.user.findUnique({
-      where: { UserID: userIdNumber },
+      where: { userId: userIdNumber },
       select: {
-        UserID: true,
-        FirstName: true,
-        LastName: true,
-        Email: true,
-        Address: true,
-        Phone: true,
-        BirthDate: true,
-        HireDate: true,
-        ProfileImage: true,
-        IsActive: true,
-        Role: true,
+        userId: true,
+        email: true,
+        profileImage: true,
+        firstName: true,
+        lastName: true,
+        address: true,
+        phone: true,
+        birthDate: true,
+        hireDate: true,
+        salary: true,
+        isActive: true,
+        role: true,
       },
     });
 
@@ -600,19 +604,7 @@ export const getUserData = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Usuario no encontrado' });
     }
 
-    return res.status(200).json({
-      userId: user.UserID,
-      name: user.FirstName,
-      lastname: user.LastName,
-      email: user.Email,
-      address: user.Address,
-      phone: user.Phone,
-      birthDate: user.BirthDate,
-      hireDate: user.HireDate,
-      profileImage: user.ProfileImage,
-      isActive: user.IsActive,
-      role: user.Role,
-    });
+    return res.status(200).json(user);
   } catch (error) {
     console.log(error);
     return res.status(500).json({ message: 'Error al obtener los datos' });
@@ -645,7 +637,7 @@ export const adminEditUser = async (req: Request, res: Response) => {
 
     // Obtener los datos del usuario por ID
     const userToUpdate = await prisma.user.findUnique({
-      where: { UserID: userIdToUpdate },
+      where: { userId: userIdToUpdate },
     });
 
     if (!userToUpdate) {
@@ -654,17 +646,17 @@ export const adminEditUser = async (req: Request, res: Response) => {
 
     // Actualizar los campos del usuario
     const updatedUser = await prisma.user.update({
-      where: { UserID: userIdToUpdate },
+      where: { userId: userIdToUpdate },
       data: {
-        FirstName: name || userToUpdate.FirstName,
-        LastName: lastname || userToUpdate.LastName,
-        Email: email || userToUpdate.Email,
-        Address: address || userToUpdate.Address,
-        Phone: phone || userToUpdate.Phone,
-        BirthDate: birthDate || userToUpdate.BirthDate,
-        HireDate: hireDate || userToUpdate.HireDate,
-        IsActive: isActive !== undefined ? isActive : userToUpdate.IsActive,
-        RoleID: roleId || userToUpdate.RoleID,
+        firstName: name || userToUpdate.firstName,
+        lastName: lastname || userToUpdate.lastName,
+        email: email || userToUpdate.email,
+        address: address || userToUpdate.address,
+        phone: phone || userToUpdate.phone,
+        birthDate: birthDate || userToUpdate.birthDate,
+        hireDate: hireDate || userToUpdate.hireDate,
+        isActive: isActive !== undefined ? isActive : userToUpdate.isActive,
+        roleId: roleId || userToUpdate.roleId,
       },
     });
 

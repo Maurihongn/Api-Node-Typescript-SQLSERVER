@@ -5,103 +5,140 @@ import fs from 'fs';
 import { checkAdminPermission } from '../services/authService';
 import sharp from 'sharp';
 import path from 'path';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 //CREAR UN ITEM
 export const createItem = async (req: Request, res: Response) => {
   const { userId, name, price, isActive, description, categoryId } = req.body;
 
   if (!userId) {
-    return res.status(400).json({ message: 'No estas autorizado' });
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
+    return res.status(400).json({ message: 'No estás autorizado' });
   }
 
   if (!name || !price || !isActive || !description || !categoryId) {
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
     return res.status(400).json({ message: 'Faltan datos' });
   }
 
   try {
-    const isAdmin = await checkAdminPermission(userId);
-
+    // Verificar si el usuario tiene permisos de administrador
+    const isAdmin = checkAdminPermission(userId);
     if (!isAdmin) {
-      return res.status(400).json({ message: 'No estas autorizado' });
-    }
-
-    const pool = await connectDb();
-    if (!pool) {
-      return res
-        .status(500)
-        .json({ message: 'Error connecting to the database' });
-    }
-
-    const createItemQuery = `INSERT INTO Items (Name, Price, IsActive, Description, CategoryId) VALUES (@name, @price, @isActive, @description, @categoryId);
-        SELECT SCOPE_IDENTITY() AS InsertedItemId;`;
-    const createItemResult = await pool
-      .request()
-      .input('name', sql.NVarChar, name)
-      .input('price', sql.Decimal, price)
-      .input('isActive', sql.Bit, isActive)
-      .input('description', sql.NVarChar, description)
-      .input('categoryId', sql.Int, categoryId)
-      .query(createItemQuery);
-
-    if (createItemResult.rowsAffected[0] === 0) {
-      return res
-        .status(400)
-        .json({ message: 'Error al crear el item intente nuevamente' });
-    }
-
-    if (!req.file) {
-      return res.status(200).json({
-        message: 'Item creado correctamente, agregale una foto',
+      if (req.file) {
+        fs.unlinkSync(req.file!.path);
+      }
+      return res.status(401).json({
+        message: 'No estas autorizado',
       });
     }
-    console.log(createItemResult.recordset[0]);
-    const insertedItemId = createItemResult.recordset[0].InsertedItemId;
 
-    const fileName = `item-${Date.now()}-${insertedItemId}.webp`;
-    const imagePath = `uploads/items/${fileName}`; // Ruta donde guardar la imagen
+    //verificar si la categoria existe
+    const category = await prisma.category.findUnique({
+      where: {
+        categoryId: parseInt(categoryId),
+      },
+    });
 
-    // Utiliza Sharp para redimensionar y convertir la foto de perfil a WebP
+    if (!category) {
+      if (req.file) {
+        fs.unlinkSync(req.file!.path);
+      }
+      return res.status(400).json({
+        message: 'La categoría no existe',
+      });
+    }
+
+    // Convertir isActive a un booleano
+    const isActiveBool = isActive === 'true';
+    // Crear el nuevo ítem
+    const createdItem = await prisma.item.create({
+      data: {
+        name,
+        price: parseFloat(price), // Convertir 'price' a tipo Float
+        isActive: isActiveBool,
+        description,
+        categoryId: parseInt(categoryId),
+      },
+    });
+
+    if (!createdItem) {
+      if (req.file) {
+        fs.unlinkSync(req.file!.path);
+      }
+      return res
+        .status(400)
+        .json({ message: 'Error al crear el ítem. Intente nuevamente' });
+    }
+
+    // Si no se subió una imagen, regresar una respuesta
+    if (!req.file) {
+      return res.status(200).json({
+        message: 'Ítem creado correctamente. Agregue una foto si lo desea.',
+      });
+    }
+
+    const itemId = createdItem.itemId;
+
+    const fileName = `item-${Date.now()}-${itemId}.webp`;
+    const imagePath = `uploads/items/${fileName}`;
+
+    // Utiliza Sharp para redimensionar y convertir la foto a formato WebP
     sharp(req.file.path)
-      .resize({ width: 200 }) // Ajusta el tamaño a tus necesidades
+      .resize({ width: 200 }) // Ajusta el tamaño según tus necesidades
       .webp()
       .toFile(imagePath, async (err) => {
         if (err) {
+          if (req.file) {
+            fs.unlinkSync(req.file!.path);
+          }
           return res
             .status(500)
-            .json({ message: 'Error al procesar la foto del item.' });
+            .json({ message: 'Error al procesar la foto del ítem.' });
         }
 
-        // Elimina el archivo temporal de la carga
+        // Eliminar el archivo temporal de la carga
         fs.unlinkSync(req.file!.path);
 
-        //preparar el la ruta del endpoint de la imagen
-
+        // Preparar la URL de la imagen
         const imageUrl = `${process.env.BASE_URL}/item/image/${fileName}`;
 
-        const updateImageUrlQuery = `UPDATE Items SET ItemImage = @itemImage WHERE ItemID = @itemId`;
-        const updateImageUrlResult = await pool
-          .request()
-          .input('itemId', sql.Int, insertedItemId)
-          .input('itemImage', sql.NVarChar, imageUrl)
-          .query(updateImageUrlQuery);
+        // Actualizar la URL de la imagen en la base de datos
+        const updatedItem = await prisma.item.update({
+          where: {
+            itemId: itemId,
+          },
+          data: {
+            itemImage: imageUrl,
+          },
+        });
 
-        if (updateImageUrlResult.rowsAffected[0] === 0) {
+        if (!updatedItem) {
           return res.status(400).json({
-            message: 'Error al actualizar el item intente nuevamente',
+            message:
+              'Error al actualizar la imagen del ítem. Intente nuevamente.',
           });
         }
 
-        // Si llegaste hasta aquí, la actualización y procesamiento de la foto fueron exitosos
+        // Si has llegado hasta aquí, la actualización y procesamiento de la foto fueron exitosos
+        return res.status(200).json({ message: 'Ítem creado correctamente' });
       });
-
-    return res.status(200).json({ message: 'Item creado correctamente' });
   } catch (error) {
     console.log(error);
-    fs.unlinkSync(req.file!.path);
-    return res.status(500).json({ message: 'Error al crear el item' });
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
+    return res.status(500).json({ message: 'Error al crear el ítem' });
+  } finally {
+    await prisma.$disconnect(); // Cierra la conexión de Prisma cuando termines
   }
 };
-
 //MOSTRAR IMAGEN
 export const image = async (req: Request, res: Response) => {
   let fileName = req.params.fileName;
@@ -120,15 +157,24 @@ export const image = async (req: Request, res: Response) => {
 };
 
 //CARGAR IMAGEN A UN ITEM
+
 export const uploadImage = async (req: Request, res: Response) => {
   const { itemId } = req.params;
   const { userId } = req.body;
+
   if (!userId) {
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
     return res
       .status(401)
-      .json({ message: 'No estas autorizado para hacer esta accion' });
+      .json({ message: 'No estás autorizado para hacer esta acción' });
   }
+
   if (!req.file || !itemId) {
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
     return res.status(400).json({ message: 'Faltan datos' });
   }
 
@@ -136,91 +182,92 @@ export const uploadImage = async (req: Request, res: Response) => {
     const isAdmin = await checkAdminPermission(userId);
 
     if (!isAdmin) {
+      if (req.file) {
+        fs.unlinkSync(req.file!.path);
+      }
       return res.status(400).json({ message: 'No estas autorizado' });
     }
+    // Conectarse a la base de datos
+    const item = await prisma.item.findUnique({
+      where: {
+        itemId: parseInt(itemId),
+      },
+    });
 
-    //conectarse a la base de datos
-    const pool = await connectDb();
-    if (!pool) {
-      return res
-        .status(500)
-        .json({ message: 'Error connecting to the database' });
-    }
-
-    //obtener el datos del usuario por id
-    const getItemQuery = `SELECT ItemID, ItemImage FROM Items WHERE ItemID = @itemId`;
-    const itemResult = await pool
-      .request()
-      .input('itemId', sql.Int, itemId)
-      .query(getItemQuery);
-
-    if (itemResult.recordset.length === 0) {
+    if (!item) {
+      if (req.file) {
+        fs.unlinkSync(req.file!.path);
+      }
       return res.status(400).json({ message: 'Item no encontrado' });
     }
 
     // Ruta de la imagen anterior
-    const oldImagePath = itemResult.recordset[0].ItemImage;
+    const oldImagePath = item.itemImage;
 
     // Eliminar la imagen anterior si existe
     if (oldImagePath) {
-      //extrar el nombre del fichero
       const oldFileName = `uploads/items/${path.basename(oldImagePath)}`;
-      //eliminarlo
       if (fs.existsSync(oldFileName)) {
         fs.unlinkSync(oldFileName);
       }
     }
 
-    const fileName = `item-${Date.now()}-${
-      itemResult.recordset[0].ItemID
-    }.webp`;
-    const imagePath = `uploads/items/${fileName}`; // Ruta donde guardar la imagen
+    const fileName = `item-${Date.now()}-${item.itemId}.webp`;
+    const imagePath = `uploads/items/${fileName}`;
 
-    // Utiliza Sharp para redimensionar y convertir la foto de perfil a WebP
+    // Utilizar Sharp para redimensionar y convertir la foto de perfil a WebP
     sharp(req.file.path)
-      .resize({ width: 200 }) // Ajusta el tamaño a tus necesidades
+      .resize({ width: 200 }) // Ajustar el tamaño según tus necesidades
       .webp()
       .toFile(imagePath, async (err) => {
         if (err) {
+          if (req.file) {
+            fs.unlinkSync(req.file!.path);
+          }
           return res
             .status(500)
             .json({ message: 'Error al procesar la foto del Item.' });
         }
 
-        // Elimina el archivo temporal de la carga
+        // Eliminar el archivo temporal de la carga
         fs.unlinkSync(req.file!.path);
 
-        // Actualiza la foto de perfil del usuario
-
-        //preparar el la ruta del endpoint de la imagen
-
+        // Preparar la URL del endpoint de la imagen
         const imageUrl = `${process.env.BASE_URL}/item/image/${fileName}`;
 
-        const updateImageUrlQuery = `UPDATE Items SET ItemImage = @itemImage WHERE ItemID = @itemId`;
-        const updateImageUrlResult = await pool
-          .request()
-          .input('itemId', sql.Int, itemId)
-          .input('itemImage', sql.NVarChar, imageUrl)
-          .query(updateImageUrlQuery);
+        // Actualizar la foto del ítem en la base de datos
+        const updatedItem = await prisma.item.update({
+          where: {
+            itemId: parseInt(itemId),
+          },
+          data: {
+            itemImage: imageUrl,
+          },
+        });
 
-        if (updateImageUrlResult.rowsAffected[0] === 0) {
+        if (!updatedItem) {
           return res.status(400).json({
-            message: 'Error al actualizar el item intente nuevamente',
+            message:
+              'Error al actualizar la imagen del ítem. Intente nuevamente',
           });
         }
 
-        // Si llegaste hasta aquí, la actualización y procesamiento de la foto fueron exitosos
+        return res
+          .status(200)
+          .json({ message: 'Imagen actualizada con éxito' });
       });
-    return res.status(200).json({ message: 'Imagen actualizada con éxito.' });
   } catch (error) {
     fs.unlinkSync(req.file!.path);
     return res
       .status(500)
       .json({ message: 'Error al procesar la foto de perfil.' });
+  } finally {
+    await prisma.$disconnect(); // Cerrar la conexión de Prisma cuando hayas terminado
   }
 };
 
 //OBTENER ITEMS
+
 export const getItems = async (req: Request, res: Response) => {
   const { userId } = req.body;
   const { search = '', page = 1, limit = 10 } = req.query;
@@ -228,17 +275,10 @@ export const getItems = async (req: Request, res: Response) => {
   if (!userId) {
     return res
       .status(401)
-      .json({ message: 'No estas autorizado para hacer esta accion' });
+      .json({ message: 'No estás autorizado para hacer esta acción' });
   }
 
   try {
-    const pool = await connectDb();
-    if (!pool) {
-      return res
-        .status(500)
-        .json({ message: 'Error connecting to the database' });
-    }
-
     // Parsea los valores de page y limit a números enteros
     const pageNumber = parseInt(page as string, 10);
     const limitNumber = parseInt(limit as string, 10);
@@ -246,79 +286,66 @@ export const getItems = async (req: Request, res: Response) => {
     // Calcula el número de elementos a omitir para la paginación
     const offset = (pageNumber - 1) * limitNumber;
 
-    //contruye la consulta sql para obtener los items
-    let getItemsQuery = `SELECT i.ItemID as itemId, i.Name as name, i.Price as price, i.Description as description, i.ItemImage as itemImage, i.IsActive as isActive, i.CreationDate as creationDate, i.CategoryID as categoryId, c.Name as categoryName FROM Items i INNER JOIN Categories c ON i.CategoryID = c.CategoryID ${
-      typeof search === 'string' && search.trim() !== ''
-        ? `WHERE c.Name LIKE @search`
-        : ''
-    }`;
+    const itemsInfo = await prisma.item.findMany({
+      where: {
+        category: {
+          name: {
+            contains: search as string,
+            mode: 'insensitive',
+          },
+        },
+      },
+      orderBy: {
+        itemId: 'asc',
+      },
+      skip: offset,
+      take: limitNumber,
+      select: {
+        itemId: true,
+        name: true,
+        price: true,
+        description: true,
+        itemImage: true,
+        isActive: true,
+        creationDate: true,
+        category: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
 
-    const queryParams: { [key: string]: any } = {};
+    const items = itemsInfo.map((item) => ({
+      itemId: item.itemId,
+      name: item.name,
+      price: item.price,
+      description: item.description,
+      itemImage: item.itemImage,
+      isActive: item.isActive,
+      creationDate: item.creationDate,
+      category: item.category.name, // Aquí obtenemos el nombre de la categoría
+    }));
 
-    if (typeof search === 'string' && search.trim() !== '') {
-      queryParams.search = `%${search}%`;
-    }
-
-    // Calcula el total de items
-    const totalItemsQuery = `
-      SELECT COUNT(*) AS TotalItems
-      FROM Items i
-      INNER JOIN Categories c ON i.CategoryId = c.CategoryId
-      ${
-        typeof search === 'string' && search.trim() !== ''
-          ? 'WHERE c.Name LIKE @search'
-          : ''
-      }
-    `;
-
-    const totalItemsResult = await pool
-      .request()
-      .input('search', sql.NVarChar, `%${search}%`)
-      .query(totalItemsQuery);
-
-    if (totalItemsResult.recordset.length === 0) {
-      return res.status(400).json({ message: 'No hay items cargados' });
-    }
-
-    const totalItems = totalItemsResult.recordset[0].TotalItems;
+    const totalItems = await prisma.item.count({
+      where: {
+        category: {
+          name: {
+            contains: search as string,
+            mode: 'insensitive',
+          },
+        },
+      },
+    });
 
     const totalPages = Math.ceil(totalItems / limitNumber);
 
-    //agregar paginacion y ordenamiento y limite
-
-    getItemsQuery += `
-      ORDER BY i.ItemID ASC
-      OFFSET @offset ROWS
-      FETCH NEXT @limit ROWS ONLY;
-    `;
-
-    queryParams.offset = offset;
-    queryParams.limit = limitNumber;
-
-    console.log(offset);
-    console.log(limitNumber);
-    console.log(getItemsQuery);
-    console.log(queryParams);
-
-    const itemsResult = await pool
-      .request()
-      .input('search', sql.NVarChar, `%${search}%`)
-      .input('offset', sql.Int, offset)
-      .input('limit', sql.Int, limitNumber)
-      .query(getItemsQuery);
-
-    if (itemsResult.recordset.length === 0) {
-      return res.status(400).json({ message: 'No se encontraron items' });
-    }
-
-    return res
-      .status(200)
-      .json({ items: itemsResult.recordset, totalPages, totalItems, page });
-
-    // Si search no está vacío, agrega la condición de búsqueda
+    return res.status(200).json({ items, totalPages, totalItems, page });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return res.status(500).json({ message: 'Error al obtener los items' });
+  } finally {
+    await prisma.$disconnect(); // Cierra la conexión de Prisma cuando hayas terminado
   }
 };
 
@@ -330,34 +357,44 @@ export const getItemById = async (req: Request, res: Response) => {
   if (!userId) {
     return res
       .status(401)
-      .json({ message: 'No estas autorizado para hacer esta accion' });
+      .json({ message: 'No estás autorizado para hacer esta acción' });
   }
   if (!itemId) {
     return res.status(400).json({ message: 'Faltan datos' });
   }
   try {
-    const pool = await connectDb();
-    if (!pool) {
-      return res
-        .status(500)
-        .json({ message: 'Error connecting to the database' });
+    // Consulta el ítem por ID utilizando Prisma
+    const item = await prisma.item.findUnique({
+      where: {
+        itemId: parseInt(itemId), // Asegúrate de convertir el ID a número
+      },
+      select: {
+        itemId: true,
+        name: true,
+        price: true,
+        description: true,
+        itemImage: true,
+        isActive: true,
+        creationDate: true,
+        category: {
+          select: {
+            categoryId: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!item) {
+      return res.status(400).json({ message: 'No se encontró el ítem' });
     }
-
-    const getItemByIdQuery = `SELECT ItemID as itemId, Name as name, Price as price, Description as description, ItemImage as itemImage, IsActive as isActive, CreationDate as creationDate, CategoryID as categoryId FROM Items WHERE ItemID = @itemId`;
-    const getItemByIdResult = await pool
-      .request()
-      .input('itemId', sql.Int, itemId)
-      .query(getItemByIdQuery);
-
-    if (getItemByIdResult.recordset.length === 0) {
-      return res.status(400).json({ message: 'No se encontro el item' });
-    }
-
-    const item = getItemByIdResult.recordset[0];
 
     return res.status(200).json(item);
   } catch (error) {
-    return res.status(500).json({ message: 'Error al obtener el item' });
+    console.error(error);
+    return res.status(500).json({ message: 'Error al obtener el ítem' });
+  } finally {
+    await prisma.$disconnect(); // Cierra la conexión de Prisma cuando termines
   }
 };
 
@@ -367,117 +404,120 @@ export const editItem = async (req: Request, res: Response) => {
   const { itemId } = req.params;
 
   if (!userId) {
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
     return res
       .status(401)
-      .json({ message: 'No estas autorizado para hacer esta accion' });
+      .json({ message: 'No estás autorizado para hacer esta acción' });
   }
   if (!itemId || !name || !price || !isActive || !description || !categoryId) {
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
     return res.status(400).json({ message: 'Faltan datos' });
   }
 
   try {
-    //revisar si sos admin
+    // Verificar si el usuario tiene permisos de administrador
     const isAdmin = await checkAdminPermission(userId);
 
     if (!isAdmin) {
-      return res.status(400).json({ message: 'No estas autorizado' });
+      if (req.file) {
+        fs.unlinkSync(req.file!.path);
+      }
+      return res.status(400).json({ message: 'No estás autorizado' });
     }
 
-    const pool = await connectDb();
-    if (!pool) {
-      return res
-        .status(500)
-        .json({ message: 'Error connecting to the database' });
-    }
+    // Actualizar el ítem utilizando Prisma
+    const updatedItem = await prisma.item.update({
+      where: {
+        itemId: parseInt(itemId), // Asegúrate de convertir el ID a número
+      },
+      data: {
+        name,
+        price: parseFloat(price), // Convierte 'price' a tipo Float
+        isActive: isActive === 'true', // Convierte 'isActive' a tipo booleano
+        description,
+        categoryId: parseInt(categoryId), // Convierte 'categoryId' a número
+      },
+    });
 
-    const editItemQuery = `UPDATE Items SET Name = @name, Price = @price, IsActive = @isActive, Description = @description, CategoryID = @categoryId WHERE ItemID = @itemId`;
-    const editItemResult = await pool
-      .request()
-      .input('itemId', sql.Int, itemId)
-      .input('name', sql.NVarChar, name)
-      .input('price', sql.Int, price)
-      .input('isActive', sql.Bit, isActive)
-      .input('description', sql.NVarChar, description)
-      .input('categoryId', sql.Int, categoryId)
-      .query(editItemQuery);
-
-    if (editItemResult.rowsAffected[0] === 0) {
+    if (!updatedItem) {
+      if (req.file) {
+        fs.unlinkSync(req.file!.path);
+      }
       return res
         .status(400)
-        .json({ message: 'Error al editar el item intente nuevamente' });
+        .json({ message: 'Error al editar el ítem. Intente nuevamente' });
     }
 
     if (req.file) {
-      const getItemImageQuery = `SELECT ItemImage FROM Items WHERE ItemID = @itemId`;
-      const getItemImageResult = await pool
-        .request()
-        .input('itemId', sql.Int, itemId)
-        .query(getItemImageQuery);
-
-      if (getItemImageResult.recordset.length === 0) {
-        return res
-          .status(400)
-          .json({ message: 'Error al obtener la imagen del item' });
-      }
-      // Ruta de la imagen anterior
-      const oldImagePath = getItemImageResult.recordset[0].ItemImage;
-
       // Eliminar la imagen anterior si existe
-      if (oldImagePath) {
-        //extrar el nombre del fichero
-        const oldFileName = `uploads/items/${path.basename(oldImagePath)}`;
-        //eliminarlo
-
+      if (updatedItem.itemImage) {
+        const oldFileName = `uploads/items/${path.basename(
+          updatedItem.itemImage
+        )}`;
         if (fs.existsSync(oldFileName)) {
           fs.unlinkSync(oldFileName);
         }
       }
 
       const fileName = `item-${Date.now()}-${itemId}.webp`;
-      const imagePath = `uploads/items/${fileName}`; // Ruta donde guardar la imagen
+      const imagePath = `uploads/items/${fileName}`;
 
-      // Utiliza Sharp para redimensionar y convertir la foto de perfil a WebP
+      // Utiliza Sharp para redimensionar y convertir la foto a formato WebP
       sharp(req.file.path)
         .resize({ width: 200 }) // Ajusta el tamaño a tus necesidades
         .webp()
         .toFile(imagePath, async (err) => {
           if (err) {
+            if (req.file) {
+              fs.unlinkSync(req.file!.path);
+            }
             return res
               .status(500)
-              .json({ message: 'Error al procesar la foto del Item.' });
+              .json({ message: 'Error al procesar la foto del ítem.' });
           }
 
           // Elimina el archivo temporal de la carga
           fs.unlinkSync(req.file!.path);
 
-          // Actualiza la foto de perfil del usuario
-
-          //preparar el la ruta del endpoint de la imagen
-
+          // Preparar la URL de la imagen
           const imageUrl = `${process.env.BASE_URL}/item/image/${fileName}`;
 
-          const updateImageUrlQuery = `UPDATE Items SET ItemImage = @itemImage WHERE ItemID = @itemId`;
-          const updateImageUrlResult = await pool
-            .request()
-            .input('itemId', sql.Int, itemId)
-            .input('itemImage', sql.NVarChar, imageUrl)
-            .query(updateImageUrlQuery);
+          // Actualizar la URL de la imagen en la base de datos
+          const updatedItemImage = await prisma.item.update({
+            where: {
+              itemId: parseInt(itemId), // Asegúrate de convertir el ID a número
+            },
+            data: {
+              itemImage: imageUrl,
+            },
+          });
 
-          if (updateImageUrlResult.rowsAffected[0] === 0) {
+          if (!updatedItemImage) {
             return res.status(400).json({
-              message: 'Error al actualizar el item intente nuevamente',
+              message:
+                'Error al actualizar la imagen del ítem. Intente nuevamente.',
             });
           }
         });
     }
+
     return res.status(200).json({
-      message: 'Item editado correctamente',
+      message: 'Ítem editado correctamente',
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
     return res
       .status(500)
-      .json({ message: 'Error al editar el item, intente editar nuevamente' });
+      .json({ message: 'Error al editar el ítem. Intente nuevamente' });
+  } finally {
+    await prisma.$disconnect(); // Cierra la conexión de Prisma cuando termines
   }
 };
 
@@ -489,70 +529,62 @@ export const deleteItem = async (req: Request, res: Response) => {
   if (!userId) {
     return res
       .status(401)
-      .json({ message: 'No estas autorizado para hacer esta accion' });
+      .json({ message: 'No estás autorizado para hacer esta acción' });
   }
   if (!itemId) {
     return res.status(400).json({ message: 'Faltan datos' });
   }
 
   try {
-    //revisar si sos admin
+    // Verificar si el usuario tiene permisos de administrador
     const isAdmin = await checkAdminPermission(userId);
 
     if (!isAdmin) {
-      return res.status(400).json({ message: 'No estas autorizado' });
+      return res.status(400).json({ message: 'No estás autorizado' });
     }
 
-    const pool = await connectDb();
-    if (!pool) {
-      return res
-        .status(500)
-        .json({ message: 'Error connecting to the database' });
-    }
+    // Obtener la información del ítem antes de eliminarlo
+    const itemToDelete = await prisma.item.findUnique({
+      where: {
+        itemId: parseInt(itemId), // Asegúrate de convertir el ID a número
+      },
+    });
 
-    //traer el item y su imagen asi borrarla del almacenamiento del servidor
-    const getItemImageQuery = `SELECT ItemImage FROM Items WHERE ItemID = @itemId`;
-    const getItemImageResult = await pool
-      .request()
-      .input('itemId', sql.Int, itemId)
-      .query(getItemImageQuery);
-
-    if (getItemImageResult.recordset.length === 0) {
-      return res
-        .status(400)
-        .json({ message: 'Error al obtener la imagen del item' });
+    if (!itemToDelete) {
+      return res.status(400).json({ message: 'Error al obtener el ítem' });
     }
 
     // Ruta de la imagen anterior
-    const oldImagePath = getItemImageResult.recordset[0].ItemImage;
+    const oldImagePath = itemToDelete.itemImage;
 
     // Eliminar la imagen anterior si existe
     if (oldImagePath) {
-      //extrar el nombre del fichero
       const oldFileName = `uploads/items/${path.basename(oldImagePath)}`;
-      //eliminarlo
-
       if (fs.existsSync(oldFileName)) {
         fs.unlinkSync(oldFileName);
       }
     }
 
-    const deleteItemQuery = `DELETE FROM Items WHERE ItemID = @itemId`;
-    const deleteItemResult = await pool
-      .request()
-      .input('itemId', sql.Int, itemId)
-      .query(deleteItemQuery);
+    // Eliminar el ítem utilizando Prisma
+    const deletedItem = await prisma.item.delete({
+      where: {
+        itemId: parseInt(itemId), // Asegúrate de convertir el ID a número
+      },
+    });
 
-    if (deleteItemResult.rowsAffected[0] === 0) {
+    if (!deletedItem) {
       return res
         .status(400)
-        .json({ message: 'Error al eliminar el item intente nuevamente' });
+        .json({ message: 'Error al eliminar el ítem. Intente nuevamente' });
     }
-    return res.status(200).json({ message: 'Item eliminado correctamente' });
-  } catch {
-    fs.unlinkSync(req.file!.path);
+
+    return res.status(200).json({ message: 'Ítem eliminado correctamente' });
+  } catch (error) {
+    console.error(error);
     return res
       .status(500)
-      .json({ message: 'Error al eliminar el item, intente nuevamente' });
+      .json({ message: 'Error al eliminar el ítem. Intente nuevamente' });
+  } finally {
+    await prisma.$disconnect(); // Cierra la conexión de Prisma cuando termines
   }
 };

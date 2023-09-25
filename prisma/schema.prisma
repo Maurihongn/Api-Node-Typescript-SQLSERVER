@@ -11,103 +11,103 @@ datasource db {
 }
 
 model ActivationCode {
-  CodeID  Int       @id @default(autoincrement())
-  UserID  Int
-  Code    String
-  IsUsed  Boolean?
-  User    User      @relation(fields: [UserID], references: [UserID])
+  codeId         Int       @id @default(autoincrement()) 
+  userId         Int       
+  code           String    
+  isUsed         Boolean?  
+  user           User      @relation(fields: [userId], references: [userId])
 }
 
 model Category {
-  CategoryID   Int       @id @default(autoincrement())
-  Name         String
-  Description  String?
-  CreationDate DateTime?
-  IsActive     Boolean?
-  Items        Item[]
+  categoryId     Int       @id @default(autoincrement()) 
+  name           String    
+  description    String?   
+  creationDate   DateTime? 
+  isActive       Boolean?  
+  items          Item[]    
 }
 
 model Item {
-  ItemID       Int       @id @default(autoincrement())
-  Name         String
-  Price        Float
-  IsActive     Boolean
-  Description  String?
-  CreationDate DateTime?
-  CategoryID   Int
-  Category     Category  @relation(fields: [CategoryID], references: [CategoryID])
-  ItemImage    String?
-  OrderItems   OrderItem[]
+  itemId         Int       @id @default(autoincrement()) 
+  name           String    
+  price          Float     
+  isActive       Boolean   
+  description    String?  
+  creationDate   DateTime? 
+  categoryId     Int       
+  category       Category  @relation(fields: [categoryId], references: [categoryId])
+  itemImage      String?   
+  orderItems     OrderItem[] 
 }
 
 model Order {
-  OrderID         Int           @id @default(autoincrement())
-  TableNumber     Int
-  OrderStatusID   Int?
-  NumberOfPeople  Int?
-  CreationDate    DateTime?
-  UserID          Int?
-  OrderStatus     OrderStatus?  @relation(fields: [OrderStatusID], references: [OrderStatusID])
-  User            User?         @relation(fields: [UserID], references: [UserID])
-  OrderItems      OrderItem[]
-  TotalPrice      Float?        // Precio total de la orden
+  orderId         Int           @id @default(autoincrement()) 
+  tableNumber     Int           
+  orderStatusId   Int?          
+  numberOfPeople  Int?          
+  creationDate    DateTime?     
+  userId          Int?          
+  orderStatus     OrderStatus?  @relation(fields: [orderStatusId], references: [orderStatusId])
+  user            User?         @relation(fields: [userId], references: [userId])
+  orderItems      OrderItem[]   
+  totalPrice      Float?        
 }
 
 model OrderItem {
-  OrderItemID     Int       @id @default(autoincrement())
-  OrderID         Int
-  ItemID          Int
-  Quantity        Int
-  UnitPrice       Float      // Precio unitario del item en esta orden
-  TotalPrice      Float      // Precio total del item en esta orden
-  Order           Order     @relation(fields: [OrderID], references: [OrderID])
-  Item            Item      @relation(fields: [ItemID], references: [ItemID])
+  orderItemId     Int       @id @default(autoincrement()) 
+  orderId         Int       
+  itemId          Int       
+  quantity        Int       
+  unitPrice       Float     
+  totalPrice      Float     
+  order           Order     @relation(fields: [orderId], references: [orderId])
+  item            Item      @relation(fields: [itemId], references: [itemId])
 }
 
 model OrderStatus {
-  OrderStatusID  Int       @id @default(autoincrement())
-  StatusName     String
-  Orders         Order[]
+  orderStatusId  Int     @id @default(autoincrement())  
+  statusName     String    
+  orders         Order[]   
 }
 
 model Reservation {
-  ReservationID       Int               @id @default(autoincrement())
-  ReservationDate     DateTime?
-  ReservationStatusID Int?
-  UserID              Int?
-  ReservationStatus   ReservationStatus? @relation(fields: [ReservationStatusID], references: [ReservationStatusID])
-  User                User?              @relation(fields: [UserID], references: [UserID])
+  reservationId       Int               @id @default(autoincrement()) 
+  reservationDate     DateTime?         
+  reservationStatusId Int?              
+  userId              Int?              
+  reservationStatus   ReservationStatus? @relation(fields: [reservationStatusId], references: [reservationStatusId])
+  user                User?             @relation(fields: [userId], references: [userId])
 }
 
 model ReservationStatus {
-  ReservationStatusID Int       @id @default(autoincrement())
-  StatusName          String
-  Reservations        Reservation[]
+  reservationStatusId Int    @id @default(autoincrement())   
+  statusName          String    
+  reservations        Reservation[] 
 }
 
 model Role {
-  RoleID    Int       @id @default(autoincrement())
-  RoleName  String
-  RoleValue String
-  Users     User[]
+  roleId    Int       @id @default(autoincrement()) 
+  roleName  String    
+  roleValue String    
+  users     User[]    
 }
 
 model User {
-  UserID      Int            @id @default(autoincrement())
-  Email       String         @unique
-  Password    String
-  ProfileImage String?
-  FirstName   String
-  LastName    String
-  Address     String?
-  Phone       String?
-  BirthDate   DateTime?
-  HireDate    DateTime?
-  RoleID      Int?
-  Salary      Float?
-  IsActive    Boolean?
-  ActivationCodes ActivationCode[]
-  Orders      Order[]
-  Reservations Reservation[]
-  Role        Role?          @relation(fields: [RoleID], references: [RoleID])
+  userId           Int            @id @default(autoincrement()) 
+  email            String         @unique 
+  password         String         
+  profileImage     String?        
+  firstName        String         
+  lastName         String         
+  address          String?        
+  phone            String?        
+  birthDate        DateTime?      
+  hireDate         DateTime?      
+  roleId           Int?           
+  salary           Float?         
+  isActive         Boolean?       
+  activationCodes  ActivationCode[] 
+  orders           Order[]          
+  reservations     Reservation[]    
+  role             Role?            @relation(fields: [roleId], references: [roleId])
 }

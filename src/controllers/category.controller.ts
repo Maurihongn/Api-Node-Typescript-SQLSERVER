@@ -1,34 +1,24 @@
-import bcrypt from 'bcrypt';
-import sharp from 'sharp';
+import { PrismaClient } from '@prisma/client';
 import { Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { connectDb } from '../database/dbConfig';
-import sql from 'mssql';
-import fs from 'fs';
-import path from 'path';
+import { checkAdminPermission } from '../services/authService';
+
+const prisma = new PrismaClient();
 
 //OBTENER TODAS LAS CATEGORIAS
+
 export const getCategories = async (req: Request, res: Response) => {
   try {
-    const pool = await connectDb();
-    if (!pool) {
-      return res.status(500).json({
-        message: 'Error al conectar con la base de datos',
-      });
-    }
+    const categories = await prisma.category.findMany();
 
-    const getCategoriesQuery = `SELECT * FROM Categories`;
-    const categoriesResult = await pool.request().query(getCategoriesQuery);
-
-    if (categoriesResult.recordset.length === 0) {
+    if (categories.length === 0) {
       return res.status(204).json({
         message: 'No hay categorias',
       });
     }
 
-    const categories = categoriesResult.recordset;
     return res.status(200).json(categories);
   } catch (error) {
+    console.error(error);
     return res.status(500).json({
       message: 'Error al obtener las categorias',
     });
@@ -46,30 +36,23 @@ export const getCategory = async (req: Request, res: Response) => {
   }
 
   try {
-    const pool = await connectDb();
-    if (!pool) {
-      return res.status(500).json({
-        message: 'Error al conectar con la base de datos',
+    const category = await prisma.category.findUnique({
+      where: {
+        categoryId: parseInt(categoryId, 10),
+      },
+    });
+
+    if (!category) {
+      return res.status(404).json({
+        message: 'No existe la categoría',
       });
     }
 
-    const getCategoryQuery = `SELECT * FROM Categories WHERE CategoryID = @categoryId`;
-    const categoryResult = await pool
-      .request()
-      .input('categoryId', sql.Int, categoryId)
-      .query(getCategoryQuery);
-
-    if (categoryResult.recordset.length === 0) {
-      return res.status(400).json({
-        message: 'No existe la categoria',
-      });
-    }
-
-    const categorie = categoryResult.recordset[0];
-    return res.status(200).json(categorie);
+    return res.status(200).json(category);
   } catch (error) {
+    console.error(error);
     return res.status(500).json({
-      message: 'Error al obtener la categoria',
+      message: 'Error al obtener la categoría',
     });
   }
 };
@@ -81,7 +64,7 @@ export const saveCategory = async (req: Request, res: Response) => {
 
   if (!userId) {
     return res.status(401).json({
-      message: 'No estas autorizado',
+      message: 'No estás autorizado',
     });
   }
 
@@ -92,63 +75,46 @@ export const saveCategory = async (req: Request, res: Response) => {
   }
 
   try {
-    const pool = await connectDb();
-    if (!pool) {
-      return res.status(500).json({
-        message: 'Error al conectar con la base de datos',
+    // Verificar si el usuario que está intentando hacer esto es admin
+    const isAdmin = checkAdminPermission(userId);
+
+    if (!isAdmin) {
+      return res.status(401).json({
+        message: 'No estás autorizado',
       });
     }
 
-    //tengo que revisar si el usuario que esta intentando hacer esto es admin
+    // Verificar si ya existe una categoría con ese nombre
+    const existingCategory = await prisma.category.findFirst({
+      where: {
+        name: name,
+      },
+    });
 
-    const getUserRoleQuery = `SELECT Users.RoleID, Roles.RoleValue FROM Users INNER JOIN Roles ON Users.RoleID = Roles.RoleID WHERE UserID = @userId`;
-    const userRoleResult = await pool
-      .request()
-      .input('userId', sql.Int, userId)
-      .query(getUserRoleQuery);
-
-    if (userRoleResult.recordset[0].RoleValue !== 'ADMIN') {
-      return res
-        .status(401)
-        .json({ message: 'No tienes permiso para realizar esta acción' });
-    }
-
-    //tengo que revisar si ya existe una categoria con ese nombre
-    const checkCategoryQuery = `SELECT * FROM Categories WHERE Name = @name`;
-    const checkCategoryResult = await pool
-      .request()
-      .input('name', sql.VarChar, name)
-      .query(checkCategoryQuery);
-    if (checkCategoryResult.recordset.length > 0) {
+    if (existingCategory) {
       return res.status(400).json({
-        message: 'Ya existe una categoria con ese nombre',
+        message: 'Ya existe una categoría con ese nombre',
       });
     }
 
-    const creationDate = new Date();
-
-    //tengo que agregar la fecha de creacion en la query
-    const saveCategoryQuery = `INSERT INTO Categories (Name, Description, CreationDate, IsActive)
-    VALUES (@name, @description, @creationDate, 1)`;
-    const saveCategoryResult = await pool
-      .request()
-      .input('name', sql.VarChar, name)
-      .input('description', sql.VarChar, description)
-      .input('creationDate', sql.Date, creationDate)
-      .query(saveCategoryQuery);
-
-    if (saveCategoryResult.rowsAffected[0] === 0) {
-      return res.status(400).json({
-        message: 'Error al crear la categoria intente nuevamente',
-      });
-    }
+    // Crear la categoría
+    const category = await prisma.category.create({
+      data: {
+        name: name,
+        description: description,
+        creationDate: new Date(),
+        isActive: true,
+      },
+    });
 
     return res.status(200).json({
-      message: 'Categoria creada con éxito',
+      message: 'Categoría creada con éxito',
+      category,
     });
   } catch (error) {
+    console.error(error);
     return res.status(500).json({
-      message: 'Error al crear la categoria, intente nuevamente',
+      message: 'Error al crear la categoría, intente nuevamente',
     });
   }
 };
@@ -160,7 +126,7 @@ export const editCategory = async (req: Request, res: Response) => {
 
   if (!userId) {
     return res.status(401).json({
-      message: 'No estas autorizado',
+      message: 'No estás autorizado',
     });
   }
   if (!categoryId || !name || !description) {
@@ -170,59 +136,54 @@ export const editCategory = async (req: Request, res: Response) => {
   }
 
   try {
-    const pool = await connectDb();
-    if (!pool) {
-      return res.status(500).json({
-        message: 'Error al conectar con la base de datos',
+    // Comprobar si el usuario que intenta editar la categoría es un administrador
+    const isAdmin = checkAdminPermission(userId);
+
+    if (!isAdmin) {
+      return res.status(401).json({
+        message: 'No estás autorizado',
       });
     }
+    // Actualizar la categoría
+    const updatedCategory = await prisma.category.update({
+      where: {
+        categoryId: parseInt(categoryId),
+      },
+      data: {
+        name,
+        description,
+        isActive,
+      },
+    });
 
-    //tengo que revisar si el usuario que esta intentando hacer esto es admin
-
-    const getUserRoleQuery = `SELECT Users.RoleID, Roles.RoleValue FROM Users INNER JOIN Roles ON Users.RoleID = Roles.RoleID WHERE UserID = @userId`;
-    const userRoleResult = await pool
-      .request()
-      .input('userId', sql.Int, userId)
-      .query(getUserRoleQuery);
-
-    if (userRoleResult.recordset[0].RoleValue !== 'ADMIN') {
-      return res
-        .status(401)
-        .json({ message: 'No tienes permiso para realizar esta acción' });
-    }
-
-    //Guardar la categoria a editar
-    const editCategoryQuery = `UPDATE Categories SET Name = @name, Description = @description, IsAvtive = @isActive  WHERE CategoryID = @categoryId`;
-    const editCategoryResult = await pool
-      .request()
-      .input('name', sql.VarChar, name)
-      .input('description', sql.VarChar, description)
-      .input('categoryId', sql.Int, categoryId)
-      .input('isActive', sql.Bit, isActive)
-      .query(editCategoryQuery);
-
-    if (editCategoryResult.rowsAffected[0] === 0) {
+    if (!updatedCategory) {
       return res.status(400).json({
-        message: 'Error al editar la categoria intente nuevamente',
+        message: 'Error al editar la categoría. Intente nuevamente.',
       });
     }
 
     return res.status(200).json({
-      message: 'Categoria editada con éxito',
+      message: 'Categoría editada con éxito',
     });
   } catch (error) {
-    return res.status(500).json({});
+    console.error(error);
+    return res.status(500).json({
+      message: 'Error interno del servidor',
+    });
+  } finally {
+    await prisma.$disconnect(); // Cierra la conexión de Prisma cuando termines
   }
 };
 
 //ELIMINAR UNA CATEGORIA
+
 export const deleteCategory = async (req: Request, res: Response) => {
   const { userId } = req.body;
   const { categoryId } = req.params;
 
   if (!userId) {
     return res.status(401).json({
-      message: 'No estas autorizado',
+      message: 'No estás autorizado',
     });
   }
   if (!categoryId) {
@@ -232,44 +193,36 @@ export const deleteCategory = async (req: Request, res: Response) => {
   }
 
   try {
-    const pool = await connectDb();
-    if (!pool) {
-      return res.status(500).json({
-        message: 'Error al conectar con la base de datos',
+    // Comprobar si el usuario que intenta eliminar la categoría es un administrador
+    const isAdmin = checkAdminPermission(userId);
+    if (!isAdmin) {
+      return res.status(401).json({
+        message: 'No estás autorizado',
       });
     }
 
-    //tengo que revisar si el usuario que esta intentando hacer esto es admin
+    // Eliminar la categoría
+    const deletedCategory = await prisma.category.delete({
+      where: {
+        categoryId: parseInt(categoryId),
+      },
+    });
 
-    const getUserRoleQuery = `SELECT Users.RoleID, Roles.RoleValue FROM Users INNER JOIN Roles ON Users.RoleID = Roles.RoleID WHERE UserID = @userId`;
-    const userRoleResult = await pool
-      .request()
-      .input('userId', sql.Int, userId)
-      .query(getUserRoleQuery);
-
-    if (userRoleResult.recordset[0].RoleValue !== 'ADMIN') {
-      return res
-        .status(401)
-        .json({ message: 'No tienes permiso para realizar esta acción' });
-    }
-
-    const deleteCategoryQuery = `DELETE FROM Categories WHERE CategoryID = @categoryId`;
-    const deleteCategoryResult = await pool
-      .request()
-      .input('categoryId', sql.Int, categoryId)
-      .query(deleteCategoryQuery);
-    if (deleteCategoryResult.rowsAffected[0] === 0) {
+    if (!deletedCategory) {
       return res.status(400).json({
-        message: 'Error al eliminar la categoria intente nuevamente',
+        message: 'Error al eliminar la categoría. Intente nuevamente.',
       });
     }
 
     return res.status(200).json({
-      message: 'Categoria eliminada con éxito',
+      message: 'Categoría eliminada con éxito',
     });
   } catch (error) {
+    console.error(error);
     return res.status(500).json({
-      message: 'Error al eliminar la categoria intente nuevamente',
+      message: 'Error interno del servidor',
     });
+  } finally {
+    await prisma.$disconnect(); // Cierra la conexión de Prisma cuando termines
   }
 };

@@ -36,16 +36,16 @@ const prisma = new PrismaClient();
 export const checkAdminPermission = async (userId: number) => {
   try {
     const user = await prisma.user.findUnique({
-      where: { UserID: userId },
-      include: { Role: true },
+      where: { userId: userId },
+      include: { role: true },
     });
 
-    if (!user || !user.Role) {
+    if (!user || !user.role) {
       return false;
     }
 
     // Verificar si el usuario tiene el rol de "ADMIN"
-    return user.Role.RoleValue === 'ADMIN';
+    return user.role.roleValue === 'ADMIN';
   } catch (error) {
     console.error('Error al verificar el permiso de administrador:', error);
     return false;

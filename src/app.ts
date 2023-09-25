@@ -1,12 +1,14 @@
+import express, { Request, Response } from 'express';
+import dotenv from 'dotenv';
+import cors from 'cors';
 import fs from 'fs';
 import https from 'https';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import express, { Request, Response } from 'express';
 import { connectDb, sql } from './database/dbConfig';
 import userRoutes from './routes/user.routes';
 import categoryRoutes from './routes/category.routes';
 import itemRoutes from './routes/item.routes';
+
+import { swaggerDocs } from './swagger';
 
 //HABILITAR DOTENV
 dotenv.config();
@@ -39,10 +41,6 @@ app.use('/api/category', categoryRoutes);
 app.use('/api/item', itemRoutes);
 // app.use('/api/item', itemRoutes);
 
-app.get('/', (req: Request, res: Response) => {
-  res.send('Hola mundo');
-});
-
 //rutas de usuario
 
 const certPath = __dirname + '/../cert.pem';
@@ -61,10 +59,13 @@ const options = {
 
 const server = https.createServer(options, app);
 
-const HTTPSPORT = process.env.HTTPSPORT;
+const HTTPSPORT = process.env.HTTPSPORT ? process.env.HTTPSPORT : '3443';
+
+const _HTTPSPORT = parseInt(HTTPSPORT, 10);
 // Escuchar en el puerto 8080
-server.listen(HTTPSPORT, () => {
-  console.log(`Servidor iniciado en el puerto ${HTTPSPORT}`);
+server.listen(_HTTPSPORT, () => {
+  console.log(`Servidor iniciado en el puerto ${_HTTPSPORT}`);
+  swaggerDocs(app, _HTTPSPORT);
 });
 
 export default app;

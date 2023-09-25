@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt, { Secret } from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import fs from 'fs';
 dotenv.config();
 
 export const authToken = (
@@ -12,6 +13,9 @@ export const authToken = (
     .header('Authorization')
     ?.replace('Bearer ', '');
   if (!token) {
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
     res.status(401).send('Access Denied');
     return;
   }
@@ -19,6 +23,9 @@ export const authToken = (
   const secret: Secret | undefined = process.env.TOKEN_SECRET;
 
   if (!secret) {
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
     res.status(500).send('Internal Server Error: JWT secret not defined');
     return;
   }
@@ -31,6 +38,9 @@ export const authToken = (
     console.log(req.body);
     next();
   } catch (error) {
+    if (req.file) {
+      fs.unlinkSync(req.file!.path);
+    }
     res.status(401).json({
       message: 'Invalid Token',
       error,

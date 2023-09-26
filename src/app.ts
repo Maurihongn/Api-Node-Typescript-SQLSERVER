@@ -1,12 +1,9 @@
-import express, { Request, Response } from 'express';
-import dotenv from 'dotenv';
 import cors from 'cors';
-import fs from 'fs';
-import https from 'https';
-import { connectDb, sql } from './database/dbConfig';
-import userRoutes from './routes/user.routes';
+import dotenv from 'dotenv';
+import express from 'express';
 import categoryRoutes from './routes/category.routes';
 import itemRoutes from './routes/item.routes';
+import userRoutes from './routes/user.routes';
 
 import { swaggerDocs } from './swagger';
 
@@ -20,19 +17,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-async function serverInit() {
-  try {
-    await connectDb(); // Establece la conexión a la base de datos
-    console.log('Conexión a la base de datos establecida.');
-
-    // Resto del código para configurar tu servidor Express y rutas...
-  } catch (error) {
-    console.error('Error al conectar a la base de datos:', error);
-  }
-}
-
-serverInit();
-
 dotenv.config();
 // Rutas
 
@@ -42,26 +26,6 @@ app.use('/api/item', itemRoutes);
 // app.use('/api/item', itemRoutes);
 
 //rutas de usuario
-
-// const certPath = __dirname + '/../cert.pem';
-// const keyPath = __dirname + '/../key.pem';
-
-// const cert = fs.readFileSync(certPath);
-// const key = fs.readFileSync(keyPath);
-// const passphrase = process.env.PASSPHRASE;
-
-// // Crear un servidor HTTPS
-// const options = {
-//   key: key,
-//   cert: cert,
-//   passphrase: passphrase,
-// };
-
-// const server = https.createServer(options, app);
-
-// const HTTPSPORT = process.env.HTTPSPORT ? process.env.HTTPSPORT : '3443';
-
-// const _HTTPSPORT = parseInt(HTTPSPORT, 10);
 
 const PORT = process.env.PORT ? process.env.PORT : '8080';
 

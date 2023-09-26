@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { connectDb } from '../database/dbConfig';
+import { connectDb } from '../../controller viejo/database/dbConfig';
 import sql, { pool } from 'mssql';
 import fs from 'fs';
 import { checkAdminPermission } from '../services/authService';

@@ -325,7 +325,7 @@ const options = {
       },
     },
   },
-  apis: [`${path.join(__dirname, './routes/*.routes.ts')}`],
+  apis: [`${path.join(__dirname, './routes/*.routes.js')}`],
 };
 
 //DOCS en JSON format

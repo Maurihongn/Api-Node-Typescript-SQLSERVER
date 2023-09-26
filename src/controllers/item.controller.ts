@@ -1,6 +1,4 @@
 import { Request, Response } from 'express';
-import { connectDb } from '../../controller viejo/database/dbConfig';
-import sql, { pool } from 'mssql';
 import fs from 'fs';
 import { checkAdminPermission } from '../services/authService';
 import sharp from 'sharp';

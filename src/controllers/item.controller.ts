@@ -85,7 +85,7 @@ export const createItem = async (req: Request, res: Response) => {
     const itemId = createdItem.itemId;
 
     const fileName = `item-${Date.now()}-${itemId}.webp`;
-    const imagePath = `uploads/items/${fileName}`;
+    const imagePath = `src/uploads/items/${fileName}`;
 
     // Utiliza Sharp para redimensionar y convertir la foto a formato WebP
     sharp(req.file.path)
@@ -128,7 +128,6 @@ export const createItem = async (req: Request, res: Response) => {
         return res.status(200).json({ message: 'Ítem creado correctamente' });
       });
   } catch (error) {
-    console.log(error);
     if (req.file) {
       fs.unlinkSync(req.file!.path);
     }
@@ -140,7 +139,7 @@ export const createItem = async (req: Request, res: Response) => {
 //MOSTRAR IMAGEN
 export const image = async (req: Request, res: Response) => {
   let fileName = req.params.fileName;
-  let ruta_fisica = `./uploads/items/${fileName}`;
+  let ruta_fisica = `./src/uploads/items/${fileName}`;
 
   fs.stat(ruta_fisica, (error, exist) => {
     if (exist) {
@@ -204,14 +203,14 @@ export const uploadImage = async (req: Request, res: Response) => {
 
     // Eliminar la imagen anterior si existe
     if (oldImagePath) {
-      const oldFileName = `uploads/items/${path.basename(oldImagePath)}`;
+      const oldFileName = `src/uploads/items/${path.basename(oldImagePath)}`;
       if (fs.existsSync(oldFileName)) {
         fs.unlinkSync(oldFileName);
       }
     }
 
     const fileName = `item-${Date.now()}-${item.itemId}.webp`;
-    const imagePath = `uploads/items/${fileName}`;
+    const imagePath = `src/uploads/items/${fileName}`;
 
     // Utilizar Sharp para redimensionar y convertir la foto de perfil a WebP
     sharp(req.file.path)
@@ -453,7 +452,7 @@ export const editItem = async (req: Request, res: Response) => {
     if (req.file) {
       // Eliminar la imagen anterior si existe
       if (updatedItem.itemImage) {
-        const oldFileName = `uploads/items/${path.basename(
+        const oldFileName = `src/uploads/items/${path.basename(
           updatedItem.itemImage
         )}`;
         if (fs.existsSync(oldFileName)) {
@@ -462,7 +461,7 @@ export const editItem = async (req: Request, res: Response) => {
       }
 
       const fileName = `item-${Date.now()}-${itemId}.webp`;
-      const imagePath = `uploads/items/${fileName}`;
+      const imagePath = `src/uploads/items/${fileName}`;
 
       // Utiliza Sharp para redimensionar y convertir la foto a formato WebP
       sharp(req.file.path)
@@ -557,7 +556,7 @@ export const deleteItem = async (req: Request, res: Response) => {
 
     // Eliminar la imagen anterior si existe
     if (oldImagePath) {
-      const oldFileName = `uploads/items/${path.basename(oldImagePath)}`;
+      const oldFileName = `src/uploads/items/${path.basename(oldImagePath)}`;
       if (fs.existsSync(oldFileName)) {
         fs.unlinkSync(oldFileName);
       }

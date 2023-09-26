@@ -35,7 +35,6 @@ export const authToken = (
     });
     req.body.userId = verified.userId;
 
-    console.log(req.body);
     next();
   } catch (error) {
     if (req.file) {
@@ -71,7 +70,6 @@ export const readToken = (
         maxAge: '15d',
       });
       req.body.userId = verified.userId;
-      console.log(req.body.userId);
     } catch (error) {
       req.body.userId = null;
     } finally {

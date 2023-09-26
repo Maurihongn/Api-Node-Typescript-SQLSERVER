@@ -30,7 +30,6 @@ export const createUser = async (req: Request, res: Response) => {
 
   try {
     if (!email || !password || !name || !lastname) {
-      console.log({ email, password, name, lastname });
       return res.status(400).json({ message: 'Empty fields' });
     }
 
@@ -88,7 +87,6 @@ export const createUser = async (req: Request, res: Response) => {
 
     return res.status(201).json({ message: 'User created' });
   } catch (error) {
-    console.log(error);
     return res.status(500).json({ message: 'Server internal error' });
   }
 };
@@ -402,7 +400,6 @@ export const getUserRole = async (req: Request, res: Response) => {
       roleValue: userRole.roleValue,
     });
   } catch (error) {
-    console.log(error);
     return res
       .status(500)
       .json({ message: 'Error al obtener el rol del usuario' });
@@ -499,7 +496,7 @@ export const saveImage = async (req: Request, res: Response) => {
     // Eliminar la imagen anterior si existe
     if (oldImagePath) {
       // Extraer el nombre del archivo
-      const oldFileName = `uploads/avatars/${path.basename(oldImagePath)}`;
+      const oldFileName = `src/uploads/avatars/${path.basename(oldImagePath)}`;
       // Eliminarlo
       if (fs.existsSync(oldFileName)) {
         fs.unlinkSync(oldFileName);
@@ -507,7 +504,7 @@ export const saveImage = async (req: Request, res: Response) => {
     }
 
     const fileName = `avatar-${Date.now()}-${userId}.webp`;
-    const imagePath = `uploads/avatars/${fileName}`; // Ruta donde guardar la imagen
+    const imagePath = `src/uploads/avatars/${fileName}`; // Ruta donde guardar la imagen
 
     // Utiliza Sharp para redimensionar y convertir la foto de perfil a WebP
     sharp(req.file.path)
@@ -556,7 +553,7 @@ export const saveImage = async (req: Request, res: Response) => {
 //OBTENER AVATAR
 export const image = async (req: Request, res: Response) => {
   let fileName = req.params.fileName;
-  let ruta_fisica = `./uploads/avatars/${fileName}`;
+  let ruta_fisica = `./src/uploads/avatars/${fileName}`;
 
   fs.stat(ruta_fisica, (error, exist) => {
     if (exist) {
@@ -606,7 +603,6 @@ export const getUserData = async (req: Request, res: Response) => {
 
     return res.status(200).json(user);
   } catch (error) {
-    console.log(error);
     return res.status(500).json({ message: 'Error al obtener los datos' });
   }
 };

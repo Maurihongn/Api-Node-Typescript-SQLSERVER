@@ -32,7 +32,6 @@ const PORT = process.env.PORT ? process.env.PORT : '8080';
 const _PORT = parseInt(PORT, 10);
 // // Escuchar en el puerto 8080
 app.listen(_PORT, () => {
-  console.log(`Servidor iniciado en el puerto ${_PORT}`);
   swaggerDocs(app, _PORT);
 });
 

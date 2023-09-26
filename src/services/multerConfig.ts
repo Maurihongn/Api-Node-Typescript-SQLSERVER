@@ -3,7 +3,7 @@ import multer from 'multer';
 export const avatarImageUpload = multer.diskStorage({
   destination: (req, file, cb) => {
     // Define la ubicación para otro tipo de imagen
-    cb(null, 'uploads/avatars');
+    cb(null, 'src/uploads/avatars');
   },
   filename: (req, file, cb) => {
     // Define el nombre del archivo aquí
@@ -14,7 +14,7 @@ export const avatarImageUpload = multer.diskStorage({
 export const itemImageUpload = multer.diskStorage({
   destination: (req, file, cb) => {
     // Define la ubicación para otro tipo de imagen
-    cb(null, 'uploads/items');
+    cb(null, 'src/uploads/items');
   },
   filename: (req, file, cb) => {
     // Define el nombre del archivo aquí

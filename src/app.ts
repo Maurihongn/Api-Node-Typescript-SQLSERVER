@@ -63,13 +63,13 @@ app.use('/api/item', itemRoutes);
 
 // const _HTTPSPORT = parseInt(HTTPSPORT, 10);
 
-const HTTPPORT = process.env.HTTPPORT ? process.env.HTTPPORT : '8080';
+const PORT = process.env.PORT ? process.env.PORT : '8080';
 
-const _HTTPPORT = parseInt(HTTPPORT, 10);
+const _PORT = parseInt(PORT, 10);
 // // Escuchar en el puerto 8080
-app.listen(_HTTPPORT, () => {
-  console.log(`Servidor iniciado en el puerto ${_HTTPPORT}`);
-  swaggerDocs(app, _HTTPPORT);
+app.listen(_PORT, () => {
+  console.log(`Servidor iniciado en el puerto ${_PORT}`);
+  swaggerDocs(app, _PORT);
 });
 
 export default app;

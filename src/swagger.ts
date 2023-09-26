@@ -335,5 +335,5 @@ const swaggerSpec = swaggerJsdoc(options);
 
 export const swaggerDocs = (app: Express, port: number) => {
   app.use('/api/v1/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-  console.log(`Docs disponibles en https://localhost:${port}/api/v1/docs`);
+  console.log(`Docs disponibles en http://localhost:${port}/api/v1/docs`);
 };

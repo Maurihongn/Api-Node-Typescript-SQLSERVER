@@ -43,29 +43,33 @@ app.use('/api/item', itemRoutes);
 
 //rutas de usuario
 
-const certPath = __dirname + '/../cert.pem';
-const keyPath = __dirname + '/../key.pem';
+// const certPath = __dirname + '/../cert.pem';
+// const keyPath = __dirname + '/../key.pem';
 
-const cert = fs.readFileSync(certPath);
-const key = fs.readFileSync(keyPath);
-const passphrase = process.env.PASSPHRASE;
+// const cert = fs.readFileSync(certPath);
+// const key = fs.readFileSync(keyPath);
+// const passphrase = process.env.PASSPHRASE;
 
-// Crear un servidor HTTPS
-const options = {
-  key: key,
-  cert: cert,
-  passphrase: passphrase,
-};
+// // Crear un servidor HTTPS
+// const options = {
+//   key: key,
+//   cert: cert,
+//   passphrase: passphrase,
+// };
 
-const server = https.createServer(options, app);
+// const server = https.createServer(options, app);
 
-const HTTPSPORT = process.env.HTTPSPORT ? process.env.HTTPSPORT : '3443';
+// const HTTPSPORT = process.env.HTTPSPORT ? process.env.HTTPSPORT : '3443';
 
-const _HTTPSPORT = parseInt(HTTPSPORT, 10);
-// Escuchar en el puerto 8080
-server.listen(_HTTPSPORT, () => {
-  console.log(`Servidor iniciado en el puerto ${_HTTPSPORT}`);
-  swaggerDocs(app, _HTTPSPORT);
+// const _HTTPSPORT = parseInt(HTTPSPORT, 10);
+
+const HTTPPORT = process.env.HTTPPORT ? process.env.HTTPPORT : '8080';
+
+const _HTTPPORT = parseInt(HTTPPORT, 10);
+// // Escuchar en el puerto 8080
+app.listen(_HTTPPORT, () => {
+  console.log(`Servidor iniciado en el puerto ${_HTTPPORT}`);
+  swaggerDocs(app, _HTTPPORT);
 });
 
 export default app;
